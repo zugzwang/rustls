@@ -1,13 +1,15 @@
 use crate::common_state::Protocol;
-use crate::crypto;
 use crate::crypto::cipher::{AeadKey, Iv};
+use crate::crypto::{self, KeyExchangeAlgorithm};
 use crate::enums::{CipherSuite, ProtocolVersion, SignatureAlgorithm, SignatureScheme};
+use crate::msgs::handshake::ALL_KEY_EXCHANGE_ALGORITHMS;
 #[cfg(feature = "tls12")]
 use crate::tls12::Tls12CipherSuite;
 use crate::tls13::Tls13CipherSuite;
 #[cfg(feature = "tls12")]
 use crate::versions::TLS12;
 use crate::versions::{SupportedProtocolVersion, TLS13};
+use crate::NamedGroup;
 
 use alloc::vec::Vec;
 use core::fmt;
@@ -117,6 +119,18 @@ impl SupportedCipherSuite {
                 .is_some(),
         }
     }
+
+    /// Return the list of `KeyExchangeAlgorithm`s supported by this cipher suite.
+    ///
+    /// TLS 1.3 cipher suites support both ECDHE and DHE key exchange, but TLS 1.2 suites
+    /// support one or the other.
+    pub(crate) fn key_exchange_algorithms(&self) -> &[KeyExchangeAlgorithm] {
+        match self {
+            #[cfg(feature = "tls12")]
+            Self::Tls12(tls12) => core::slice::from_ref(&tls12.kx),
+            Self::Tls13(_) => ALL_KEY_EXCHANGE_ALGORITHMS,
+        }
+    }
 }
 
 impl fmt::Debug for SupportedCipherSuite {
@@ -177,6 +191,48 @@ pub(crate) fn reduce_given_version_and_protocol(
 ) -> Vec<SupportedCipherSuite> {
     all.iter()
         .filter(|&&suite| suite.version().version == version && suite.usable_for_protocol(proto))
+        .copied()
+        .collect()
+}
+
+/// Return a list of the ciphersuites in `all` with the suites
+/// incompatible with the Groups extension removed.
+pub(crate) fn reduce_given_kx_groups(
+    all: &[SupportedCipherSuite],
+    groups_ext: Option<&[NamedGroup]>,
+    supported_groups: &[NamedGroup],
+) -> Vec<SupportedCipherSuite> {
+    fn is_ffdhe(g: &NamedGroup) -> bool {
+        match g {
+            // Codepoints between 0x100 and 0x200 are reserved for ffdhe groups.
+            // https://datatracker.ietf.org/doc/html/rfc7919#section-2
+            NamedGroup::Unknown(x) => (0x100..0x200).contains(x),
+            _ => g.key_exchange_algorithm() == Some(KeyExchangeAlgorithm::DHE),
+        }
+    }
+    // https://datatracker.ietf.org/doc/html/rfc7919#section-4 (paragraph 1)
+    let no_known_ffdhe_groups = if let Some(groups_ext) = groups_ext {
+        let mut ext_has_ffdhe_groups = false;
+        let mut ext_has_known_ffdhe_groups = false;
+        for g in groups_ext
+            .iter()
+            .filter(|g| is_ffdhe(g))
+        {
+            ext_has_ffdhe_groups = true;
+            if supported_groups.contains(g) {
+                ext_has_known_ffdhe_groups = true;
+                break;
+            }
+        }
+        ext_has_ffdhe_groups & !ext_has_known_ffdhe_groups
+    } else {
+        false
+    };
+
+    all.iter()
+        .filter(|suite| {
+            !no_known_ffdhe_groups || suite.key_exchange_algorithms() != [KeyExchangeAlgorithm::DHE]
+        })
         .copied()
         .collect()
 }

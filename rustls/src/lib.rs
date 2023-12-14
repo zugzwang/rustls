@@ -455,6 +455,9 @@ pub use crate::verify::DigitallySignedStruct;
 pub use crate::versions::{SupportedProtocolVersion, ALL_VERSIONS, DEFAULT_VERSIONS};
 pub use crate::webpki::RootCertStore;
 
+#[cfg(feature = "tls12")]
+pub use crate::msgs::ffdhe_groups;
+
 /// Items for use in a client.
 pub mod client {
     pub(super) mod builder;

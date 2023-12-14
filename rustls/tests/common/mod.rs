@@ -24,6 +24,10 @@ pub use rustls::crypto::aws_lc_rs as provider;
 pub use rustls::crypto::ring as provider;
 use rustls::crypto::CryptoProvider;
 
+#[cfg(feature = "tls12")]
+#[cfg(any(feature = "ring", feature = "aws_lc_rs"))]
+pub mod ffdhe;
+
 macro_rules! embed_files {
     (
         $(

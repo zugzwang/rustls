@@ -5,6 +5,8 @@ use crate::crypto::ActiveKeyExchange;
 use crate::crypto::SecureRandom;
 use crate::enums::{CipherSuite, HandshakeType, ProtocolVersion, SignatureScheme};
 use crate::error::InvalidMessage;
+#[cfg(feature = "tls12")]
+use crate::ffdhe_groups::FfdheGroup;
 #[cfg(feature = "logging")]
 use crate::log::warn;
 use crate::msgs::base::{Payload, PayloadU16, PayloadU24, PayloadU8};
@@ -1481,7 +1483,14 @@ impl CertificatePayloadTls13 {
 pub enum KeyExchangeAlgorithm {
     /// Key exchange performed via elliptic curve Diffie-Hellman.
     ECDHE,
+    /// Diffie-Hellman Key exchange (with only known parameters as defined in [RFC 7919]).
+    ///
+    /// [RFC 7919]: https://datatracker.ietf.org/doc/html/rfc7919
+    DHE,
 }
+
+pub(crate) static ALL_KEY_EXCHANGE_ALGORITHMS: &[KeyExchangeAlgorithm] =
+    &[KeyExchangeAlgorithm::ECDHE, KeyExchangeAlgorithm::DHE];
 
 // We don't support arbitrary curves.  It's a terrible
 // idea and unnecessary attack surface.  Please,
@@ -1514,6 +1523,39 @@ impl Codec for EcParameters {
 }
 
 #[derive(Debug)]
+pub(crate) enum ClientKeyExchangeParams {
+    Ecdh(ClientEcdhParams),
+    Dh(ClientDhParams),
+}
+
+impl ClientKeyExchangeParams {
+    #[cfg(feature = "tls12")]
+    pub(crate) fn pub_key(&self) -> &[u8] {
+        match self {
+            Self::Ecdh(ecdh) => &ecdh.public.0,
+            Self::Dh(dh) => &dh.public.0,
+        }
+    }
+
+    #[cfg(feature = "tls12")]
+    pub(crate) fn encode(&self, buf: &mut Vec<u8>) {
+        match self {
+            Self::Ecdh(ecdh) => ecdh.encode(buf),
+            Self::Dh(dh) => dh.encode(buf),
+        }
+    }
+}
+
+impl KxDecode for ClientKeyExchangeParams {
+    fn decode(r: &mut Reader, algo: KeyExchangeAlgorithm) -> Result<Self, InvalidMessage> {
+        Ok(match algo {
+            KeyExchangeAlgorithm::ECDHE => Self::Ecdh(Codec::read(r)?),
+            KeyExchangeAlgorithm::DHE => Self::Dh(Codec::read(r)?),
+        })
+    }
+}
+
+#[derive(Debug)]
 pub(crate) struct ClientEcdhParams {
     pub(crate) public: PayloadU8,
 }
@@ -1525,6 +1567,22 @@ impl Codec for ClientEcdhParams {
 
     fn read(r: &mut Reader) -> Result<Self, InvalidMessage> {
         let pb = PayloadU8::read(r)?;
+        Ok(Self { public: pb })
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct ClientDhParams {
+    pub(crate) public: PayloadU16,
+}
+
+impl Codec for ClientDhParams {
+    fn encode(&self, bytes: &mut Vec<u8>) {
+        self.public.encode(bytes);
+    }
+
+    fn read(r: &mut Reader) -> Result<Self, InvalidMessage> {
+        let pb = PayloadU16::read(r)?;
         Ok(Self { public: pb })
     }
 }
@@ -1566,7 +1624,120 @@ impl Codec for ServerEcdhParams {
 }
 
 #[derive(Debug)]
-pub struct EcdheServerKeyExchange {
+#[allow(non_snake_case)]
+pub(crate) struct ServerDhParams {
+    pub(crate) dh_p: PayloadU16,
+    pub(crate) dh_g: PayloadU16,
+    pub(crate) dh_Ys: PayloadU16,
+}
+
+impl ServerDhParams {
+    #[cfg(feature = "tls12")]
+    pub(crate) fn new(kx: &dyn ActiveKeyExchange) -> Self {
+        let params = match FfdheGroup::from_named_group(kx.group()) {
+            Some(params) => params,
+            None => panic!("invalid NamedGroup for DHE key exchange: {:?}", kx.group()),
+        };
+
+        Self {
+            dh_p: PayloadU16::new(params.p.to_vec()),
+            dh_g: PayloadU16::new(params.g.to_vec()),
+            dh_Ys: PayloadU16::new(kx.pub_key().to_vec()),
+        }
+    }
+
+    #[cfg(feature = "tls12")]
+    fn named_group(&self) -> Option<NamedGroup> {
+        fn trim_leading_zeros(buf: &[u8]) -> &[u8] {
+            for start in 0..buf.len() {
+                if buf[start] != 0 {
+                    return &buf[start..];
+                }
+            }
+            &[]
+        }
+
+        FfdheGroup {
+            p: trim_leading_zeros(&self.dh_p.0),
+            g: trim_leading_zeros(&self.dh_g.0),
+        }
+        .named_group()
+    }
+}
+
+impl Codec for ServerDhParams {
+    fn encode(&self, bytes: &mut Vec<u8>) {
+        self.dh_p.encode(bytes);
+        self.dh_g.encode(bytes);
+        self.dh_Ys.encode(bytes);
+    }
+
+    fn read(r: &mut Reader) -> Result<Self, InvalidMessage> {
+        Ok(Self {
+            dh_p: PayloadU16::read(r)?,
+            dh_g: PayloadU16::read(r)?,
+            dh_Ys: PayloadU16::read(r)?,
+        })
+    }
+}
+
+pub(crate) trait KxDecode: fmt::Debug + Sized {
+    fn decode(r: &mut Reader, algo: KeyExchangeAlgorithm) -> Result<Self, InvalidMessage>;
+}
+
+#[derive(Debug)]
+pub(crate) enum ServerKeyExchangeParams {
+    Ecdh(ServerEcdhParams),
+    Dh(ServerDhParams),
+}
+
+impl ServerKeyExchangeParams {
+    #[cfg(feature = "tls12")]
+    pub(crate) fn new(kx: &dyn ActiveKeyExchange) -> Self {
+        match kx.group().key_exchange_algorithm() {
+            Some(KeyExchangeAlgorithm::DHE) => Self::Dh(ServerDhParams::new(kx)),
+            Some(KeyExchangeAlgorithm::ECDHE) => Self::Ecdh(ServerEcdhParams::new(kx)),
+            None => panic!("`ActiveKeyExchange` with unknown key exchange algorithm"),
+        }
+    }
+
+    #[cfg(feature = "tls12")]
+    pub(crate) fn pub_key(&self) -> &[u8] {
+        match self {
+            Self::Ecdh(ecdh) => &ecdh.public.0,
+            Self::Dh(dh) => &dh.dh_Ys.0,
+        }
+    }
+
+    pub(crate) fn encode(&self, buf: &mut Vec<u8>) {
+        match self {
+            Self::Ecdh(ecdh) => ecdh.encode(buf),
+            Self::Dh(dh) => dh.encode(buf),
+        }
+    }
+}
+
+impl ServerKeyExchangeParams {
+    #[cfg(feature = "tls12")]
+    pub(crate) fn named_group(&self) -> Option<NamedGroup> {
+        match self {
+            Self::Ecdh(ecdh) => Some(ecdh.curve_params.named_group),
+            Self::Dh(dh) => dh.named_group(),
+        }
+    }
+}
+
+impl KxDecode for ServerKeyExchangeParams {
+    fn decode(r: &mut Reader, algo: KeyExchangeAlgorithm) -> Result<Self, InvalidMessage> {
+        match algo {
+            KeyExchangeAlgorithm::ECDHE => Codec::read(r).map(Self::Ecdh),
+            KeyExchangeAlgorithm::DHE => Codec::read(r).map(Self::Dh),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct EcdheServerKeyExchange {
     pub(crate) params: ServerEcdhParams,
     pub(crate) dss: DigitallySignedStruct,
 }
@@ -1586,15 +1757,54 @@ impl Codec for EcdheServerKeyExchange {
 }
 
 #[derive(Debug)]
+pub(crate) struct DheServerKeyExchange {
+    pub(crate) params: ServerDhParams,
+    pub(crate) dss: DigitallySignedStruct,
+}
+
+impl Codec for DheServerKeyExchange {
+    fn encode(&self, bytes: &mut Vec<u8>) {
+        self.params.encode(bytes);
+        self.dss.encode(bytes);
+    }
+
+    fn read(r: &mut Reader) -> Result<Self, InvalidMessage> {
+        let params = ServerDhParams::read(r)?;
+        let dss = DigitallySignedStruct::read(r)?;
+
+        Ok(Self { params, dss })
+    }
+}
+
+#[derive(Debug)]
+pub struct ServerKeyExchange {
+    pub(crate) params: ServerKeyExchangeParams,
+    pub(crate) dss: DigitallySignedStruct,
+}
+
+impl ServerKeyExchange {
+    pub fn encode(&self, buf: &mut Vec<u8>) {
+        self.params.encode(buf);
+        self.dss.encode(buf);
+    }
+}
+
+#[derive(Debug)]
 pub enum ServerKeyExchangePayload {
-    Ecdhe(EcdheServerKeyExchange),
+    Known(ServerKeyExchange),
     Unknown(Payload),
+}
+
+impl From<ServerKeyExchange> for ServerKeyExchangePayload {
+    fn from(value: ServerKeyExchange) -> Self {
+        Self::Known(value)
+    }
 }
 
 impl Codec for ServerKeyExchangePayload {
     fn encode(&self, bytes: &mut Vec<u8>) {
         match *self {
-            Self::Ecdhe(ref x) => x.encode(bytes),
+            Self::Known(ref x) => x.encode(bytes),
             Self::Unknown(ref x) => x.encode(bytes),
         }
     }
@@ -1608,19 +1818,25 @@ impl Codec for ServerKeyExchangePayload {
 
 impl ServerKeyExchangePayload {
     #[cfg(feature = "tls12")]
-    pub(crate) fn unwrap_given_kxa(
-        &self,
-        kxa: KeyExchangeAlgorithm,
-    ) -> Option<EcdheServerKeyExchange> {
+    pub(crate) fn unwrap_given_kxa(&self, kxa: KeyExchangeAlgorithm) -> Option<ServerKeyExchange> {
         if let Self::Unknown(ref unk) = *self {
             let mut rd = Reader::init(&unk.0);
 
-            let result = match kxa {
-                KeyExchangeAlgorithm::ECDHE => EcdheServerKeyExchange::read(&mut rd),
+            let server_kx_params = match kxa {
+                KeyExchangeAlgorithm::ECDHE => {
+                    ServerKeyExchangeParams::Ecdh(ServerEcdhParams::read(&mut rd).ok()?)
+                }
+                KeyExchangeAlgorithm::DHE => {
+                    ServerKeyExchangeParams::Dh(ServerDhParams::read(&mut rd).ok()?)
+                }
+            };
+            let result = ServerKeyExchange {
+                params: server_kx_params,
+                dss: DigitallySignedStruct::read(&mut rd).ok()?,
             };
 
             if !rd.any_left() {
-                return result.ok();
+                return Some(result);
             };
         }
 

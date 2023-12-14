@@ -210,6 +210,10 @@ impl<S: ConfigSide> ConfigBuilder<S, WantsVersions> {
             return Err(Error::General("no kx groups configured".into()));
         }
 
+        self.state
+            .provider
+            .verify_cipher_suites_have_matching_kx()?;
+
         Ok(ConfigBuilder {
             state: WantsVerifier {
                 provider: self.state.provider,

@@ -1,3 +1,4 @@
+use crate::msgs::handshake::ALL_KEY_EXCHANGE_ALGORITHMS;
 use crate::sign::SigningKey;
 use crate::suites;
 use crate::{Error, NamedGroup};
@@ -184,6 +185,69 @@ pub struct CryptoProvider {
 
     /// Provider for loading private [SigningKey]s from [PrivateKeyDer].
     pub key_provider: &'static dyn KeyProvider,
+}
+
+impl CryptoProvider {
+    fn supported_kx_algos(&self) -> Vec<KeyExchangeAlgorithm> {
+        let mut res = Vec::with_capacity(ALL_KEY_EXCHANGE_ALGORITHMS.len());
+        for kx in self
+            .kx_groups
+            .iter()
+            .filter_map(|kx| kx.name().key_exchange_algorithm())
+        {
+            if !res.contains(&kx) {
+                res.push(kx);
+            }
+            if res.len() == ALL_KEY_EXCHANGE_ALGORITHMS.len() {
+                break;
+            }
+        }
+        res
+    }
+
+    pub(crate) fn supported_kx_group_names(&self) -> Vec<NamedGroup> {
+        self.kx_groups
+            .iter()
+            .map(|skxg| skxg.name())
+            .collect::<Vec<_>>()
+    }
+
+    pub(crate) fn verify_cipher_suites_have_matching_kx(&self) -> Result<(), Error> {
+        let kx_algos = self.supported_kx_algos();
+
+        for cs in self.cipher_suites.iter() {
+            let cs_kx = cs.key_exchange_algorithms();
+            if !cs_kx
+                .iter()
+                .any(|kx| kx_algos.contains(kx))
+            {
+                let suite_name = cs.common().suite;
+                return Err(Error::General(alloc::format!(
+                    "Ciphersuite {suite_name:?} requires {cs_kx:?} key exchange, but no {cs_kx:?}-compatible \
+                    key exchange groups were present in `CryptoProvider`'s `kx_gropus` field",
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// Removes cipher suites from this `CryptoProvider` that have no matching `SupportedKxGroup`s in `kx_groups`
+    pub fn remove_cipher_suites_without_matching_kx(&mut self) {
+        let kx_algos = self.supported_kx_algos();
+
+        self.cipher_suites.retain(|cs| {
+            let cs_kx = cs.key_exchange_algorithms();
+            cs_kx
+                .iter()
+                .any(|kx| kx_algos.contains(kx))
+        })
+    }
+
+    /// Removes cipher suites from this `CryptoProvider` that have no matching `SupportedKxGroup`s in `kx_groups`
+    pub fn with_cipher_suites_without_matching_kx_removed(mut self) -> Self {
+        self.remove_cipher_suites_without_matching_kx();
+        self
+    }
 }
 
 /// A source of cryptographically secure randomness.

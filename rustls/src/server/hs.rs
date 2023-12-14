@@ -348,6 +348,22 @@ impl ExpectClientHello {
             cx.common.protocol,
         );
 
+        // And supported kx groups
+        let suitable_suites = suites::reduce_given_kx_groups(
+            &suitable_suites,
+            client_hello.get_namedgroups_extension(),
+            &self
+                .config
+                .provider
+                .supported_kx_group_names(),
+        );
+
+        // RFC 7919 (https://datatracker.ietf.org/doc/html/rfc7919#section-4) requires us to send
+        // the InsufficientSecurity alert in case we don't recognize client's FFDHE groups (i.e.,
+        // `suitable_suites` becomes empty). But that does not make a lot of sense (e.g., client
+        // proposes FFDHE4096 and we only support FFDHE2048), so we ignore that requirement here,
+        // and continue to send HandshakeFailure.
+
         let suite = if self.config.ignore_client_order {
             suites::choose_ciphersuite_preferring_server(
                 &client_hello.cipher_suites,
