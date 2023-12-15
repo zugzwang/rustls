@@ -1,6 +1,6 @@
 use crate::NamedGroup;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Parameters of an FFDHE group, with Big-endian byte order
 pub struct FfdheGroup<'a> {
     pub p: &'a [u8],
@@ -32,6 +32,23 @@ impl<'a> FfdheGroup<'a> {
             FFDHE6144 => Some(NamedGroup::FFDHE6144),
             FFDHE8192 => Some(NamedGroup::FFDHE8192),
             _ => None,
+        }
+    }
+
+    /// Construct an `FfdheGroup` from the given `p` and `g`, trimming any potential leading zeros.
+    pub fn from_params_trimming_leading_zeros(p: &'a [u8], g: &'a [u8]) -> Self {
+        fn trim_leading_zeros(buf: &[u8]) -> &[u8] {
+            for start in 0..buf.len() {
+                if buf[start] != 0 {
+                    return &buf[start..];
+                }
+            }
+            &[]
+        }
+
+        FfdheGroup {
+            p: trim_leading_zeros(p),
+            g: trim_leading_zeros(g),
         }
     }
 }

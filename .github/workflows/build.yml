@@ -363,3 +363,21 @@ jobs:
       - name: run cargo-check-external-types for rustls/
         working-directory: rustls/
         run: cargo check-external-types
+
+  ci-only-tests:
+    name: Run ci-only-tests (in ci-tests/)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: cargo test (in ci-tests/)
+        working-directory: ci-tests/
+        run: cargo test --locked
+        env:
+          RUST_BACKTRACE: 1

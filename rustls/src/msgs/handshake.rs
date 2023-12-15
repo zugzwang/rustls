@@ -1648,20 +1648,7 @@ impl ServerDhParams {
 
     #[cfg(feature = "tls12")]
     fn named_group(&self) -> Option<NamedGroup> {
-        fn trim_leading_zeros(buf: &[u8]) -> &[u8] {
-            for start in 0..buf.len() {
-                if buf[start] != 0 {
-                    return &buf[start..];
-                }
-            }
-            &[]
-        }
-
-        FfdheGroup {
-            p: trim_leading_zeros(&self.dh_p.0),
-            g: trim_leading_zeros(&self.dh_g.0),
-        }
-        .named_group()
+        FfdheGroup::from_params_trimming_leading_zeros(&self.dh_p.0, &self.dh_g.0).named_group()
     }
 }
 

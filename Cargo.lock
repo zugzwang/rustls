@@ -116,6 +116,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4668cab20f66d8d020e1fbc0ebe47217433c1b6c8f2040faf858554e394ace6"
 
 [[package]]
+name = "asn1"
+version = "0.15.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae3ecbce89a22627b5e8e6e11d69715617138290289e385cde773b1fe50befdb"
+dependencies = [
+ "asn1_derive",
+]
+
+[[package]]
+name = "asn1_derive"
+version = "0.15.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "861af988fac460ac69a09f41e6217a8fb9178797b76fcc9478444be6a59be19c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.74"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1724,6 +1744,15 @@ dependencies = [
  "rustls 0.23.0-alpha.0",
  "rustls-pemfile 2.0.0",
  "rustls-pki-types",
+]
+
+[[package]]
+name = "rustls-ci-tests"
+version = "0.0.1"
+dependencies = [
+ "asn1",
+ "base64",
+ "rustls 0.23.0-alpha.0",
 ]
 
 [[package]]
