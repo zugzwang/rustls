@@ -18,7 +18,6 @@ pub(crate) mod persist;
 #[cfg(test)]
 mod handshake_test;
 
-#[cfg(feature = "tls12")]
 pub mod ffdhe_groups;
 #[cfg(test)]
 mod message_test;

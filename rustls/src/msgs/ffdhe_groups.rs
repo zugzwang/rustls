@@ -1,3 +1,6 @@
+//! This module contains parameters for FFDHE named groups as defined
+//! in [RFC 7919 Appendix A](https://datatracker.ietf.org/doc/html/rfc7919#appendix-A).
+
 use crate::NamedGroup;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
