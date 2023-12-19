@@ -341,6 +341,9 @@ impl ExpectClientHello {
             certkey.get_key().algorithm(),
         );
 
+        // TODO we can avoid over-allocating here by removing non-suitable
+        // suites from `suitable_suites` above
+
         // And version
         let suitable_suites = suites::reduce_given_version_and_protocol(
             &suitable_suites,
@@ -357,6 +360,13 @@ impl ExpectClientHello {
                 .provider
                 .supported_kx_group_names(),
         );
+
+        if suitable_suites.is_empty() {
+            return Err(cx.common.send_fatal_alert(
+                AlertDescription::HandshakeFailure,
+                PeerIncompatible::NoKxGroupsInCommon,
+            ));
+        }
 
         // RFC 7919 (https://datatracker.ietf.org/doc/html/rfc7919#section-4) requires us to send
         // the InsufficientSecurity alert in case we don't recognize client's FFDHE groups (i.e.,

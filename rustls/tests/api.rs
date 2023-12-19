@@ -5253,6 +5253,78 @@ fn test_server_accepts_client_with_no_ecpoints_extension_and_only_ffdhe_cipher_s
     assert!(server.process_new_packets().is_ok());
 }
 
+#[cfg(feature = "tls12")]
+#[test]
+fn test_server_avoids_cipher_suite_with_no_common_kx_groups() {
+    let server_config = finish_server_config(
+        KeyType::Rsa,
+        rustls::ServerConfig::builder_with_provider(
+            CryptoProvider {
+                cipher_suites: vec![
+                    provider::cipher_suite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+                    ffdhe::TLS_DHE_RSA_WITH_AES_128_GCM_SHA256,
+                ],
+                kx_groups: vec![provider::kx_group::SECP256R1, &ffdhe::FFDHE2048_KX_GROUP],
+                ..provider::default_provider()
+            }
+            .into(),
+        )
+        .with_protocol_versions(&[&rustls::version::TLS12])
+        .unwrap(),
+    )
+    .into();
+
+    let test_cases = [
+        (
+            vec![
+                // this matches:
+                provider::kx_group::SECP256R1,
+                &ffdhe::FFDHE3072_KX_GROUP,
+            ],
+            CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+        ),
+        (
+            vec![
+                provider::kx_group::SECP384R1,
+                // this matches:
+                &ffdhe::FFDHE2048_KX_GROUP,
+            ],
+            CipherSuite::TLS_DHE_RSA_WITH_AES_128_GCM_SHA256,
+        ),
+    ];
+
+    for (client_kx_groups, expected_cipher_suite) in test_cases {
+        let client_config = finish_client_config(
+            KeyType::Rsa,
+            rustls::ClientConfig::builder_with_provider(
+                CryptoProvider {
+                    cipher_suites: vec![
+                        provider::cipher_suite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+                        ffdhe::TLS_DHE_RSA_WITH_AES_128_GCM_SHA256,
+                    ],
+                    kx_groups: client_kx_groups,
+                    ..provider::default_provider()
+                }
+                .into(),
+            )
+            .with_protocol_versions(&[&rustls::version::TLS12])
+            .unwrap(),
+        )
+        .into();
+
+        let (mut client, mut server) = make_pair_for_arc_configs(&client_config, &server_config);
+        transfer(&mut client, &mut server);
+        assert!(dbg!(server.process_new_packets()).is_ok());
+        assert_eq!(
+            server
+                .negotiated_cipher_suite()
+                .unwrap()
+                .suite(),
+            expected_cipher_suite
+        );
+    }
+}
+
 #[test]
 fn test_client_rejects_illegal_tls13_ccs() {
     fn corrupt_ccs(msg: &mut Message) -> Altered {

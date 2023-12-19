@@ -25,7 +25,7 @@ static TLS12_DHE_RSA_WITH_AES_128_GCM_SHA256: Tls12CipherSuite =
         _ => unreachable!(),
     };
 
-/// The (test-only) TLS1.2 ciphersuite TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+/// The (test-only) TLS1.2 ciphersuite TLS_DHE_RSA_WITH_AES_128_GCM_SHA256
 pub static TLS_DHE_RSA_WITH_AES_128_GCM_SHA256: SupportedCipherSuite =
     SupportedCipherSuite::Tls12(&TLS12_DHE_RSA_WITH_AES_128_GCM_SHA256);
 
@@ -89,7 +89,9 @@ impl ActiveKeyExchange for ActiveFfdheKx {
 }
 
 pub const FFDHE2048_KX_GROUP: FfdheKxGroup = FfdheKxGroup(NamedGroup::FFDHE2048);
-static FFDHE_KX_GROUPS: &[&dyn rustls::crypto::SupportedKxGroup] = &[&FFDHE2048_KX_GROUP];
+pub const FFDHE3072_KX_GROUP: FfdheKxGroup = FfdheKxGroup(NamedGroup::FFDHE3072);
+static FFDHE_KX_GROUPS: &[&dyn rustls::crypto::SupportedKxGroup] =
+    &[&FFDHE2048_KX_GROUP, &FFDHE3072_KX_GROUP];
 
 pub fn ffdhe_provider() -> CryptoProvider {
     CryptoProvider {

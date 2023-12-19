@@ -210,28 +210,52 @@ pub(crate) fn reduce_given_kx_groups(
             _ => g.key_exchange_algorithm() == Some(KeyExchangeAlgorithm::DHE),
         }
     }
-    // https://datatracker.ietf.org/doc/html/rfc7919#section-4 (paragraph 1)
-    let no_known_ffdhe_groups = if let Some(groups_ext) = groups_ext {
-        let mut ext_has_ffdhe_groups = false;
-        let mut ext_has_known_ffdhe_groups = false;
-        for g in groups_ext
-            .iter()
-            .filter(|g| is_ffdhe(g))
-        {
-            ext_has_ffdhe_groups = true;
+
+    let mut ecdhe_kx_ok = false;
+
+    #[cfg(feature = "tls12")]
+    let mut ext_has_ffdhe_groups = false;
+    let mut ext_has_known_ffdhe_groups = false;
+    for g in groups_ext.into_iter().flatten() {
+        if is_ffdhe(g) {
+            #[cfg(feature = "tls12")]
+            {
+                ext_has_ffdhe_groups = true;
+            }
             if supported_groups.contains(g) {
                 ext_has_known_ffdhe_groups = true;
-                break;
             }
+        } else if supported_groups.contains(g) {
+            ecdhe_kx_ok = true;
         }
-        ext_has_ffdhe_groups & !ext_has_known_ffdhe_groups
-    } else {
-        false
-    };
+        if ecdhe_kx_ok & ext_has_known_ffdhe_groups {
+            break;
+        }
+    }
+
+    #[cfg(feature = "tls12")]
+    let ffdhe_kx_ok_tls12 = ext_has_known_ffdhe_groups ||
+        // https://datatracker.ietf.org/doc/html/rfc7919#section-4 (paragraph 1)
+        !ext_has_ffdhe_groups && supported_groups
+                .iter()
+                .any(|g| g.key_exchange_algorithm() == Some(KeyExchangeAlgorithm::DHE));
+
+    let ffdhe_kx_ok_tls13 = ext_has_known_ffdhe_groups;
 
     all.iter()
         .filter(|suite| {
-            !no_known_ffdhe_groups || suite.key_exchange_algorithms() != [KeyExchangeAlgorithm::DHE]
+            let suite_kx = suite.key_exchange_algorithms();
+            // echde:
+            ecdhe_kx_ok && suite_kx.contains(&KeyExchangeAlgorithm::ECDHE) ||
+            // dhe:
+            {
+                let ffdhe_kx_ok = match suite {
+                    #[cfg(feature = "tls12")]
+                    SupportedCipherSuite::Tls12(_) => ffdhe_kx_ok_tls12,
+                    SupportedCipherSuite::Tls13(_) => ffdhe_kx_ok_tls13,
+                };
+                ffdhe_kx_ok && suite_kx.contains(&KeyExchangeAlgorithm::DHE)
+            }
         })
         .copied()
         .collect()
