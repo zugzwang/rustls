@@ -1,12 +1,17 @@
 [package]
-name = "rustls-ci-tests"
-version = "0.0.1"
+description = "Rustls CI tests"
 edition = "2021"
 license = "Apache-2.0 OR ISC OR MIT"
-description = "Rustls CI tests"
+name = "rustls-ci-tests"
 publish = false
+version = "0.0.1"
 
 [dependencies]
-rustls = { path = "../rustls" }
-base64 = "0.21"
 asn1 = "0.15"
+base64 = "0.21"
+num-bigint = "0.4.4"
+once_cell = "1.19"
+rustls = {path = "../rustls"}
+rustls-pemfile = "2"
+rustls-pki-types = "1.0"
+openssl = "0.10"

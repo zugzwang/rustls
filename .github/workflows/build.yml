@@ -376,8 +376,11 @@ jobs:
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: openssl version
+        run: openssl version
+
       - name: cargo test (in ci-tests/)
         working-directory: ci-tests/
-        run: cargo test --locked
+        run: cargo test --locked -- --include-ignored
         env:
           RUST_BACKTRACE: 1
