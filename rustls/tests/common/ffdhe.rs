@@ -1,8 +1,10 @@
+use num_bigint::BigUint;
 use rustls::{
     crypto::{
         self, ActiveKeyExchange, CipherSuiteCommon, CryptoProvider, KeyExchangeAlgorithm,
-        SupportedKxGroup,
+        SharedSecret, SupportedKxGroup,
     },
+    ffdhe_groups::FfdheGroup,
     CipherSuite, NamedGroup, SupportedCipherSuite, Tls12CipherSuite,
 };
 
@@ -48,11 +50,14 @@ impl SupportedKxGroup for FfdheKxGroup {
         let p = num_bigint::BigUint::from_bytes_be(group.p);
         let g = num_bigint::BigUint::from_bytes_be(group.g);
         let x_pub = g.modpow(&x, &p);
+        let x_pub = to_bytes_be_with_len(x_pub, group.p.len());
+
         Ok(Box::new(ActiveFfdheKx {
-            x_pub: x_pub.to_bytes_be(),
+            x_pub,
             x,
             p,
-            group: self.0,
+            group,
+            named_group: self.0,
         }))
     }
 
@@ -63,9 +68,10 @@ impl SupportedKxGroup for FfdheKxGroup {
 
 struct ActiveFfdheKx {
     x_pub: Vec<u8>,
-    x: num_bigint::BigUint,
-    p: num_bigint::BigUint,
-    group: NamedGroup,
+    x: BigUint,
+    p: BigUint,
+    group: FfdheGroup<'static>,
+    named_group: NamedGroup,
 }
 
 impl ActiveKeyExchange for ActiveFfdheKx {
@@ -75,17 +81,25 @@ impl ActiveKeyExchange for ActiveFfdheKx {
     ) -> Result<crypto::SharedSecret, rustls::Error> {
         let peer_pub = num_bigint::BigUint::from_bytes_be(peer_pub_key);
         let secret = peer_pub.modpow(&self.x, &self.p);
+        let secret = to_bytes_be_with_len(secret, self.group.p.len());
 
-        Ok(crypto::SharedSecret::from(&secret.to_bytes_be()[..]))
+        Ok(SharedSecret::from(&secret[..]))
     }
 
     fn pub_key(&self) -> &[u8] {
         &self.x_pub
     }
 
-    fn group(&self) -> rustls::NamedGroup {
-        self.group
+    fn group(&self) -> NamedGroup {
+        self.named_group
     }
+}
+
+fn to_bytes_be_with_len(n: BigUint, len_bytes: usize) -> Vec<u8> {
+    let mut bytes = n.to_bytes_le();
+    bytes.resize(len_bytes, 0);
+    bytes.reverse();
+    bytes
 }
 
 pub const FFDHE2048_KX_GROUP: FfdheKxGroup = FfdheKxGroup(NamedGroup::FFDHE2048);
