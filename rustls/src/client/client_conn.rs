@@ -200,6 +200,14 @@ pub struct ClientConfig {
     ///
     /// The default is false.
     pub enable_early_data: bool,
+
+    /// If set to `true`, requires the server to support the extended
+    /// master secret extraction method defined in [RFC 7627].
+    /// The default is `false`.
+    ///
+    /// [RFC 7627]: https://datatracker.ietf.org/doc/html/rfc7627
+    #[cfg(feature = "tls12")]
+    pub require_ems: bool,
 }
 
 /// What mechanisms to support for resuming a TLS 1.2 session.
@@ -232,6 +240,8 @@ impl Clone for ClientConfig {
             key_log: Arc::clone(&self.key_log),
             enable_secret_extraction: self.enable_secret_extraction,
             enable_early_data: self.enable_early_data,
+            #[cfg(feature = "tls12")]
+            require_ems: self.require_ems,
         }
     }
 }

@@ -4,7 +4,7 @@ use crate::conn::ConnectionRandoms;
 use crate::crypto::KeyExchangeAlgorithm;
 use crate::enums::ProtocolVersion;
 use crate::enums::{AlertDescription, ContentType, HandshakeType};
-use crate::error::{Error, InvalidMessage, PeerMisbehaved};
+use crate::error::{Error, InvalidMessage, PeerIncompatible, PeerMisbehaved};
 use crate::hash_hs::HandshakeHash;
 #[cfg(feature = "logging")]
 use crate::log::{debug, trace, warn};
@@ -82,6 +82,14 @@ mod server_hello {
 
             // Doing EMS?
             self.using_ems = server_hello.ems_support_acked();
+            if self.config.require_ems && !self.using_ems {
+                return Err({
+                    cx.common.send_fatal_alert(
+                        AlertDescription::HandshakeFailure,
+                        PeerIncompatible::ExtendedMasterSecretExtensionRequired,
+                    )
+                });
+            }
 
             // Might the server send a ticket?
             let must_issue_new_ticket = if server_hello

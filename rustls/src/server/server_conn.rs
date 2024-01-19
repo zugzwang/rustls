@@ -315,6 +315,14 @@ pub struct ServerConfig {
     /// If this is 0, no tickets are sent and clients will not be able to
     /// do any resumption.
     pub send_tls13_tickets: usize,
+
+    /// If set to `true`, requires the client to support the extended
+    /// master secret extraction method defined in [RFC 7627].
+    /// The default is `false`.
+    ///
+    /// [RFC 7627]: https://datatracker.ietf.org/doc/html/rfc7627
+    #[cfg(feature = "tls12")]
+    pub require_ems: bool,
 }
 
 // Avoid a `Clone` bound on `C`.
@@ -335,6 +343,8 @@ impl Clone for ServerConfig {
             max_early_data_size: self.max_early_data_size,
             send_half_rtt_data: self.send_half_rtt_data,
             send_tls13_tickets: self.send_tls13_tickets,
+            #[cfg(feature = "tls12")]
+            require_ems: self.require_ems,
         }
     }
 }

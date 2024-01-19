@@ -274,6 +274,7 @@ pub enum PeerIncompatible {
     Tls12NotOfferedOrEnabled,
     Tls13RequiredForQuic,
     UncompressedEcPointsRequired,
+    ExtendedMasterSecretExtensionRequired,
 }
 
 impl From<PeerIncompatible> for Error {

@@ -61,6 +61,7 @@ mod client_hello {
         pub(in crate::server) session_id: SessionId,
         pub(in crate::server) suite: &'static Tls12CipherSuite,
         pub(in crate::server) using_ems: bool,
+        pub(in crate::server) force_using_ems: bool,
         pub(in crate::server) randoms: ConnectionRandoms,
         pub(in crate::server) send_ticket: bool,
         pub(in crate::server) extra_exts: Vec<ServerExtension>,
@@ -81,6 +82,11 @@ mod client_hello {
 
             if client_hello.ems_support_offered() {
                 self.using_ems = true;
+            } else if self.force_using_ems {
+                return Err(cx.common.send_fatal_alert(
+                    AlertDescription::HandshakeFailure,
+                    PeerIncompatible::ExtendedMasterSecretExtensionRequired,
+                ));
             }
 
             let groups_ext = client_hello.get_namedgroups_extension();
