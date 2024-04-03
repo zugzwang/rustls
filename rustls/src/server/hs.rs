@@ -290,6 +290,7 @@ impl ExpectClientHello {
         };
 
         cx.common.negotiated_version = Some(version);
+        std::println!("TLS1.? | SERVER | Negotiated TLS version {:?}", version);
 
         // We communicate to the upper layer what kind of key they should choose
         // via the sigschemes value.  Clients tend to treat this extension
@@ -351,6 +352,8 @@ impl ExpectClientHello {
             })?;
 
         debug!("decided upon suite {:?}", suite);
+        std::println!("TLS1.3 | SERVER | Received ClientHello {:?}", client_hello);
+        std::println!("TLS1.3 | SERVER | Decided {:?} and {:?}", suite, skxg);
         cx.common.suite = Some(suite);
 
         // Start handshake hash.

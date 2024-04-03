@@ -3,6 +3,7 @@ use alloc::boxed::Box;
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
+use std::println;
 
 pub(super) use client_hello::CompleteClientHelloHandling;
 use pki_types::{CertificateDer, UnixTime};
@@ -180,6 +181,7 @@ mod client_hello {
             let chosen_share_and_kxg = match chosen_share_and_kxg {
                 Some(s) => s,
                 None => {
+                    println!("TLS1.3 | SERVER | No suitable Key Exchange group. Renegotiating");
                     // We don't have a suitable key share.  Send a HelloRetryRequest
                     // for the mutually_preferred_group.
                     self.transcript.add_message(chm);
@@ -481,6 +483,8 @@ mod client_hello {
         trace!("sending server hello {:?}", sh);
         transcript.add_message(&sh);
         cx.common.send_msg(sh, false);
+        let _cs = suite.common.suite;
+        println!("TLS1.3 | SERVER | Sent ServerHello with {:?} and {:?}", kxgroup, _cs);
 
         // Start key schedule
         let key_schedule_pre_handshake = if let Some(psk) = resuming_psk {
@@ -507,6 +511,8 @@ mod client_hello {
             &randoms.client,
             cx.common,
         );
+
+        let _cs = suite;
 
         Ok(key_schedule)
     }
@@ -552,6 +558,7 @@ mod client_hello {
         };
 
         trace!("Requesting retry {:?}", m);
+        println!("TLS1.3 | SERVER | Sending HelloRetryRequest {:?}", m);
         transcript.rollup_for_hrr();
         transcript.add_message(&m);
         common.send_msg(m, false);
@@ -643,6 +650,7 @@ mod client_hello {
         };
 
         trace!("sending encrypted extensions {:?}", ee);
+        println!("TLS1.3 | SERVER | Sending EncryptedExtensions {:?}", ee);
         transcript.add_message(&ee);
         cx.common.send_msg(ee, true);
         Ok(early_data)
@@ -683,6 +691,7 @@ mod client_hello {
         };
 
         trace!("Sending CertificateRequest {:?}", m);
+        println!("TLS1.3 | SERVER | Sending CertificateRequest {:?}", m);
         transcript.add_message(&m);
         cx.common.send_msg(m, true);
         Ok(true)
@@ -725,6 +734,7 @@ mod client_hello {
         };
 
         trace!("sending certificate {:?}", c);
+        println!("TLS1.3 | SERVER | Sending Certificate {:?}", c);
         transcript.add_message(&c);
         common.send_msg(c, true);
     }
@@ -760,6 +770,7 @@ mod client_hello {
         };
 
         trace!("sending certificate-verify {:?}", m);
+        println!("TLS1.3 | SERVER | Sending CertificateVerify {:?}", m);
         transcript.add_message(&m);
         common.send_msg(m, true);
         Ok(())
@@ -785,6 +796,7 @@ mod client_hello {
         };
 
         trace!("sending finished {:?}", m);
+        println!("TLS1.3 | SERVER | Sending Finished {:?}", m);
         transcript.add_message(&m);
         let hash_at_server_fin = transcript.current_hash();
         cx.common.send_msg(m, true);
@@ -958,6 +970,7 @@ impl State<ServerConnectionData> for ExpectCertificateVerify {
         }
 
         trace!("client CertificateVerify OK");
+        println!("TLS1.3 | SERVER | client CertificateVerify OK");
         cx.common.peer_certificates = Some(self.client_cert);
 
         self.transcript.add_message(&m);

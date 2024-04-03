@@ -79,6 +79,7 @@ impl SupportedKxGroup for X25519Kyber768Draft00 {
         let kyber = kem::DecapsulationKey::generate(kyber768_r3())
             .map_err(|_| Error::FailedToGetRandomBytes)?;
 
+        println!("KYBER: generating key");
         let kyber_pub = kyber
             .encapsulation_key()
             .map_err(|_| Error::FailedToGetRandomBytes)?;
@@ -102,6 +103,7 @@ impl SupportedKxGroup for X25519Kyber768Draft00 {
 
         let x25519 = kx_group::X25519.start_and_complete(share.x25519)?;
 
+        println!("KYBER: encapsulation");
         let (kyber_share, kyber_secret) = kem::EncapsulationKey::new(kyber768_r3(), share.kyber)
             .map_err(|_| INVALID_KEY_SHARE)
             .and_then(|pk| {
@@ -139,6 +141,7 @@ impl ActiveKeyExchange for Active {
             }
         };
 
+        println!("KYBER: decapsulation");
         let combined = CombinedSecret::combine(
             self.x25519
                 .complete(ciphertext.x25519)?,
